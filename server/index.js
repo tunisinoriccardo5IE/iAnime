@@ -12,12 +12,23 @@ app.use(express.json());
 
 
 // API: piattaforme JustWatch per titolo e paese
+
 app.get('/api/justwatch', async (req, res) => {
-  const { title, country = 'IT' } = req.query;
+  const { title, country } = req.query;
   if (!title) return res.status(400).json({ error: 'Titolo richiesto' });
+  let userCountry = country;
   try {
+    // Se non specificato, rileva il paese dall'IP
+    if (!userCountry) {
+      const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+      // Usa ipinfo.io per geolocalizzazione gratuita (limite 50k/mese)
+      const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+      const geoRes = await fetch(`https://ipinfo.io/${ip}/json?token=demo`); // Sostituisci 'demo' con un token reale se necessario
+      const geoData = await geoRes.json();
+      userCountry = geoData.country || 'US';
+    }
     const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
-    const url = `https://apis.justwatch.com/content/titles/${country.toLowerCase()}/popular?query=${encodeURIComponent(title)}`;
+    const url = `https://apis.justwatch.com/content/titles/${userCountry.toLowerCase()}/popular?query=${encodeURIComponent(title)}`;
     const jwRes = await fetch(url);
     const jwData = await jwRes.json();
     if (jwData && jwData.items && jwData.items.length > 0) {
@@ -32,9 +43,9 @@ app.get('/api/justwatch', async (req, res) => {
           };
         }
       });
-      return res.json({ platforms: Object.values(providers) });
+      return res.json({ platforms: Object.values(providers), country: userCountry });
     } else {
-      return res.json({ platforms: [] });
+      return res.json({ platforms: [], country: userCountry });
     }
   } catch (err) {
     return res.status(500).json({ error: 'Errore JustWatch', details: err.message });
